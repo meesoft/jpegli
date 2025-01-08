@@ -3,6 +3,18 @@
 This repository contains a JPEG encoder and decoder implementation that is
 API and ABI compatible with libjpeg62.
 
+## The meesoft/jpegli fork
+
+This fork of jpegli was created to provide memory streaming support for the 
+input and output images for cjpegli to avoid having to create temporary files
+on disk. It was only made to support a Visual Studio build for Windows.
+
+The input and output can optionally be passed as an anonymous stream handle by
+setting the file name to a : followed by the integer handle of an anonymous 
+pipe and then the extension, e.g. `:<handle>.jpg`. 
+A C# example is available in
+[PhotoLocator](https://github.com/meesoft/PhotoLocator/blob/main/PhotoLocator/PictureFileFormats/JpegliEncoder.cs).
+
 ## Encoder improvements
 
 Improvements and new features used by the encoder include:

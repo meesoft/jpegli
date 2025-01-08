@@ -124,9 +124,75 @@ static inline bool ReadFile(FileWrapper& f, ContainerType* JXL_RESTRICT bytes) {
   return true;
 }
 
+namespace pipes {
+
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
+static inline uint64_t ExtractHandle(const std::string& pathname) {
+  int extIndex = pathname.find('.', 1);
+  if (extIndex <= 0) {
+    fprintf(stderr, "File extension not found\n");
+    return 0;
+  }
+  std::string handleStr = pathname.substr(1, extIndex - 1);
+  fprintf(stderr, "%s",  handleStr.c_str());
+  return atoi(handleStr.c_str());
+}
+
+static inline bool ReadFromPipe(const std::string& pathname, void** bytes, int* size) {
+  fprintf(stderr, "Reading from pipe ");
+  uint64_t handle = ExtractHandle(pathname);
+  fprintf(stderr, "\n");
+  if (handle == 0) return false;
+  unsigned long read;
+  if (!ReadFile(reinterpret_cast<HANDLE>(handle), size, 4, &read, nullptr))
+    return false;
+  if (read < 4) return false;
+  if (*size == 0) return false;
+
+  *bytes = new char[*size];
+  if (!ReadFile(reinterpret_cast<HANDLE>(handle), *bytes, *size, &read, nullptr))
+    return false;
+
+  fprintf(stderr, "Done reading from pipe\n");
+  return true;
+}
+
+static inline bool WriteToPipe(void const* bytes, int size, const std::string& pathname) {
+  fprintf(stderr, "Writing to pipe ");
+  uint64_t handle = ExtractHandle(pathname);
+  fprintf(stderr, "\n");
+  if (handle == 0) return false;
+  unsigned long written;
+  if (!WriteFile(reinterpret_cast<HANDLE>(handle), &size, 4, &written, nullptr))
+    return false;
+  if (!WriteFile(reinterpret_cast<HANDLE>(handle), bytes, size, &written, nullptr))
+    return false;
+
+  fprintf(stderr, "Done writing to pipe\n");
+  return true;
+}
+
+}  // namespace pipes
+
 template <typename ContainerType>
 static inline bool ReadFile(const std::string& filename,
                             ContainerType* JXL_RESTRICT bytes) {
+
+  if (filename[0] == ':') {
+    void* data;
+    int size = 0;
+    bool result = pipes::ReadFromPipe(filename, &data, &size);
+    if (result && size > 0) {
+      bytes->resize(static_cast<size_t>(size));
+      memcpy(reinterpret_cast<char*>(&(*bytes)[0]), data, size);
+      delete data;
+    }
+    return result;
+  }
+  fprintf(stderr, "Reading from file %s\n", filename.c_str());
+
   FileWrapper f(filename, "rb");
   return ReadFile(f, bytes);
 }
@@ -134,6 +200,12 @@ static inline bool ReadFile(const std::string& filename,
 template <typename ContainerType>
 static inline bool WriteFile(const std::string& filename,
                              const ContainerType& bytes) {
+
+  if (filename[0] == ':') {
+    return pipes::WriteToPipe(bytes.data(), bytes.size(), filename);
+  }
+  fprintf(stderr, "Writing to file %s\n", filename.c_str());
+
   FileWrapper file(filename, "wb");
   if (!file) {
     fprintf(stderr,
@@ -149,6 +221,7 @@ static inline bool WriteFile(const std::string& filename,
             strerror(errno));
     return false;
   }
+
   return true;
 }
 
